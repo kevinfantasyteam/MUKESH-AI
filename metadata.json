@@ -1,0 +1,7 @@
+{
+  "name": "Remix: Mukesh AI Pro",
+  "description": "Advanced fantasy sports team generator for Cricket, Football, Basketball, and Kabaddi. Features Mukesh AI-powered smart analysis, multi-source data sync from Crex, Cricbuzz, and ESPNCricinfo, and direct Dream11 team transfer.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

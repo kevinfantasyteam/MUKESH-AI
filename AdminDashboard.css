@@ -1,0 +1,69 @@
+
+.admin-dashboard {
+  padding: 1.5rem;
+  background-color: transparent;
+}
+
+.admin-header {
+  margin-bottom: 2rem;
+}
+
+.users-section {
+  background-color: white;
+  padding: 1.5rem;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  border: 1px solid #f3f4f6;
+}
+
+.users-table {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+th {
+  background-color: #f9fafb;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #6b7280;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+td {
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: #374151;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+tr:hover {
+  background-color: #fcfaff;
+}
+
+.action-button {
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-right: 0.5rem;
+  transition: all 0.2s;
+}
+
+.action-button.edit {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.action-button.delete {
+  background-color: #fee2e2;
+  color: #991b1b;
+}

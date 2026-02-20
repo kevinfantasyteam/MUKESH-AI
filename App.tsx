@@ -8,6 +8,8 @@ import { FaKey, FaRocket, FaRobot, FaSearch, FaTimes, FaExternalLinkAlt, FaChart
 import { getDeepDiveAnalysis } from './services/gemini';
 import { supabase } from './services/supabase';
 
+import Promotions from './Promotions';
+
 // --- COMPONENTS ---
 import Sidebar from './Sidebar';
 import Login from './Login';
@@ -24,9 +26,6 @@ import CustomMatch from './CustomMatch';
 import SavedTeams from './SavedTeams';
 import DataManagement from './DataManagement';
 import { BestTips, HowToGenerate, AboutUs } from './StaticPages';
-
-// Global augmentation removed to fix "Duplicate identifier" errors as these types
-// are already provided by the environment's global scope.
 
 const BottomNav = () => {
   const navigate = useNavigate();
@@ -138,12 +137,11 @@ const Home = () => {
   const [selectedAnalysisMatch, setSelectedAnalysisMatch] = useState<Match | null>(null);
   const [analysisData, setAnalysisData] = useState<string | null>(null);
   const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
-
   const [adminMatches, setAdminMatches] = useState<Match[]>([]);
 
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem('live_matches') || '[]');
-    setLiveMatches(stored.length > 0 ? stored : MOCK_MATCHES);
+    // Only use MOCK_MATCHES or DB matches, ignoring local storage "saved" matches
+    setLiveMatches(MOCK_MATCHES);
     
     // Check API Key
     const checkKey = async () => {
@@ -165,7 +163,37 @@ const Home = () => {
                 .order('created_at', { ascending: false });
             
             if (data && !error) {
-                const matches = data.map((m: any) => m.data as Match);
+                const matches = data.map((m: any) => {
+                    // If data column exists, use it, otherwise construct from fields
+                    if (m.data) return m.data as Match;
+                    
+                    return {
+                        id: m.id,
+                        seriesName: m.series || 'Unknown Series',
+                        matchTime: m.date_time_gmt || new Date().toISOString(),
+                        leftTeam: { 
+                            name: m.t1 || 'Team 1', 
+                            shortName: m.t1s || 'T1', 
+                            image: m.t1_img || '' 
+                        },
+                        rightTeam: { 
+                            name: m.t2 || 'Team 2', 
+                            shortName: m.t2s || 'T2', 
+                            image: m.t2_img || '' 
+                        },
+                        sport: 'cricket', // Defaulting to cricket as per schema limitations
+                        lineupOut: m.status === 'Live' || m.status === 'Completed',
+                        automatic: true,
+                        isExpert: true,
+                        isPrime: false
+                    } as Match;
+                });
+                // Combine MOCK matches with DB matches
+                setLiveMatches(prev => {
+                    const dbIds = matches.map((m: Match) => m.id);
+                    const filteredMock = MOCK_MATCHES.filter(m => !dbIds.includes(m.id));
+                    return [...matches, ...filteredMock];
+                });
                 setAdminMatches(matches);
             }
         } catch (err) {
@@ -189,7 +217,17 @@ const Home = () => {
     setIsAnalysisLoading(true);
     setAnalysisData(null);
     try {
-        const result = await getDeepDiveAnalysis(m);
+        // Look up players for this match
+        let players = MOCK_PLAYERS[m.id];
+        
+        // If not in MOCK_PLAYERS, check local storage cache (for custom matches)
+        if (!players) {
+            const customPlayers = JSON.parse(localStorage.getItem('custom_players_cache') || '{}');
+            players = customPlayers[m.id];
+        }
+
+        // If still no players, we can't do a deep dive effectively, but we'll try with just match info
+        const result = await getDeepDiveAnalysis(m, players || []);
         setAnalysisData(result);
     } catch (err) {
         setAnalysisData("Failed to fetch analysis. Check API Key.");
@@ -202,19 +240,6 @@ const Home = () => {
 
   return (
     <div className="pb-40 bg-gray-50 min-h-screen">
-      {!hasKey && (
-          <div className="bg-orange-600 p-4 text-white text-center flex flex-col items-center gap-3 shadow-xl">
-              <div className="text-[10px] font-black uppercase tracking-widest">Mukesh AI Research is Disabled</div>
-              <div className="text-xs font-medium leading-relaxed">Connect your own Google Gemini API Key to enable AI Advice and Pitch Research.</div>
-              <button 
-                onClick={handleConnectKey}
-                className="bg-white text-orange-600 px-6 py-2.5 rounded-full text-[10px] font-black uppercase flex items-center gap-2 shadow-lg"
-              >
-                  <FaKey /> CONNECT YOUR API KEY
-              </button>
-          </div>
-      )}
-
       <div className="bg-white sticky top-[56px] z-40 border-b flex overflow-x-auto scrollbar-hide shadow-sm px-2">
         {SPORT_TABS.map(tab => (
           <button
@@ -229,6 +254,8 @@ const Home = () => {
           </button>
         ))}
       </div>
+
+      <Promotions />
       
       <div className="p-5">
         <div className="flex justify-between items-center mb-6">
@@ -451,6 +478,71 @@ const MatchView = () => {
 const Profile = () => {
     const navigate = useNavigate();
     const role = localStorage.getItem('userRole') || 'customer';
+    const [dream11Mobile, setDream11Mobile] = useState('');
+    const [dream11Otp, setDream11Otp] = useState('');
+    const [isOtpSent, setIsOtpSent] = useState(false);
+    const [isDream11Connected, setIsDream11Connected] = useState(false);
+    const [connectedNumber, setConnectedNumber] = useState('');
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data } = await supabase.from('profiles').select('dream11_mobile').eq('id', user.id).single();
+                if (data?.dream11_mobile) {
+                    setIsDream11Connected(true);
+                    setConnectedNumber(data.dream11_mobile);
+                }
+            }
+        };
+        fetchProfile();
+    }, []);
+
+    const generateMobile = () => {
+        const prefix = ['9', '8', '7', '6'];
+        const randomPrefix = prefix[Math.floor(Math.random() * prefix.length)];
+        const randomRest = Math.floor(100000000 + Math.random() * 900000000).toString().substring(0, 9);
+        setDream11Mobile(randomPrefix + randomRest);
+    };
+
+    const handleSendOtp = () => {
+        if (dream11Mobile.length !== 10) {
+            alert('Please enter a valid 10-digit mobile number');
+            return;
+        }
+        setIsOtpSent(true);
+        alert(`OTP sent to ${dream11Mobile}. (Simulation: Use 123456)`);
+    };
+
+    const handleVerifyOtp = async () => {
+        if (dream11Otp === '123456') {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                await supabase.from('profiles').update({ dream11_mobile: dream11Mobile }).eq('id', user.id);
+                setIsDream11Connected(true);
+                setConnectedNumber(dream11Mobile);
+                setIsOtpSent(false);
+                setDream11Mobile('');
+                setDream11Otp('');
+            } else {
+                // Fallback for demo without auth
+                setIsDream11Connected(true);
+                setConnectedNumber(dream11Mobile);
+                setIsOtpSent(false);
+            }
+        } else {
+            alert('Invalid OTP');
+        }
+    };
+
+    const handleDisconnect = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            await supabase.from('profiles').update({ dream11_mobile: null }).eq('id', user.id);
+        }
+        setIsDream11Connected(false);
+        setConnectedNumber('');
+    };
 
     return (
     <div className="p-6 pb-32 bg-gray-50 min-h-screen">
@@ -461,6 +553,69 @@ const Profile = () => {
             <div className="mt-4 px-6 py-2 bg-orange-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-orange-200">
                 {role === 'admin' ? 'System Administrator' : 'Mukesh AI Member'}
             </div>
+        </div>
+
+        {/* Dream11 Integration Section */}
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-6">
+            <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-xl">🏏</div>
+                <div>
+                    <div className="font-black text-sm text-gray-900 uppercase">Dream11 Connect</div>
+                    <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Link Account for Auto-Join</div>
+                </div>
+            </div>
+
+            {isDream11Connected ? (
+                <div className="bg-green-50 rounded-2xl p-4 border border-green-100">
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <div className="text-[9px] font-black text-green-600 uppercase tracking-widest mb-1">Connected Number</div>
+                            <div className="text-lg font-black text-gray-800">+91 {connectedNumber}</div>
+                        </div>
+                        <button onClick={handleDisconnect} className="bg-white text-red-500 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase border border-red-100 shadow-sm">Disconnect</button>
+                    </div>
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    {!isOtpSent ? (
+                        <>
+                            <div className="flex gap-2">
+                                <input 
+                                    type="text" 
+                                    placeholder="Enter Mobile Number" 
+                                    value={dream11Mobile}
+                                    onChange={(e) => setDream11Mobile(e.target.value)}
+                                    maxLength={10}
+                                    className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-100"
+                                />
+                                <button onClick={generateMobile} className="bg-gray-100 text-gray-600 px-3 rounded-xl text-lg" title="Generate Random Number">🎲</button>
+                            </div>
+                            <button onClick={handleSendOtp} className="w-full bg-red-600 text-white py-3 rounded-xl font-black text-[10px] uppercase shadow-lg shadow-red-100">
+                                Send OTP
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <input 
+                                type="text" 
+                                placeholder="Enter OTP (123456)" 
+                                value={dream11Otp}
+                                onChange={(e) => setDream11Otp(e.target.value)}
+                                maxLength={6}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-100"
+                            />
+                            <div className="flex gap-2">
+                                <button onClick={() => setIsOtpSent(false)} className="flex-1 bg-gray-100 text-gray-600 py-3 rounded-xl font-black text-[10px] uppercase">
+                                    Back
+                                </button>
+                                <button onClick={handleVerifyOtp} className="flex-[2] bg-red-600 text-white py-3 rounded-xl font-black text-[10px] uppercase shadow-lg shadow-red-100">
+                                    Verify & Login
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
         </div>
         
         <div className="space-y-4">

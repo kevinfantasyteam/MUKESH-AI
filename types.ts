@@ -59,6 +59,16 @@ export interface Match {
   contestTag?: string;
 }
 
+export interface Promotion {
+  _id: string;
+  label: string;
+  imageUrl: string;
+  notificationUrl: string;
+  urlType: number;
+  order: number;
+  active: boolean;
+}
+
 export interface User {
   id: string;
   name: string;

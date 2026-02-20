@@ -44,6 +44,16 @@ const TeamWizard = () => {
 
   useEffect(() => {
     const loadMatchData = async () => {
+        // First check MOCK_PLAYERS (for "live" matches from constants)
+        if (MOCK_PLAYERS[id || '']) {
+            setAllPlayers(MOCK_PLAYERS[id || '']);
+            const m = MOCK_MATCHES.find(x => x.id === id);
+            if (m) {
+                setMatch(m);
+                return;
+            }
+        }
+
         const customPlayers = JSON.parse(localStorage.getItem('custom_players_cache') || '{}');
         
         if (customPlayers[id || '']) {
@@ -78,12 +88,14 @@ const TeamWizard = () => {
                 console.error("Supabase fetch error", err);
             }
 
-            // Fallback to mock/live matches
+            // Fallback to mock/live matches from local storage if not found above
             const liveMatches = JSON.parse(localStorage.getItem('live_matches') || '[]');
-            const m = [...liveMatches, ...MOCK_MATCHES].find(x => x.id === id);
+            const m = liveMatches.find((x: Match) => x.id === id);
             if (m) {
                 setMatch(m);
-                setAllPlayers(MOCK_PLAYERS[id || ''] || []);
+                // If it was a live match but not in MOCK_PLAYERS, we might need to generate dummy players or handle it
+                // For now, assuming live matches in local storage might have players associated in a different way or just fallback
+                setAllPlayers(MOCK_PLAYERS[id || ''] || []); 
             }
         }
     };

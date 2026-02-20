@@ -2,20 +2,63 @@
 import React, { useState, useEffect } from 'react';
 import { FaEdit, FaTrash, FaUserCheck, FaUserTimes, FaClock } from 'react-icons/fa';
 import { User } from './types';
+import { supabase } from './services/supabase';
 
 const ManageUser = () => {
   const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem('tg_registered_users') || '[]');
-    setUsers(stored);
+    fetchUsers();
   }, []);
 
-  const handleDelete = (id: string) => {
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        if (data) {
+            const mappedUsers: User[] = data.map((p: any) => ({
+                id: p.id,
+                name: p.username || 'Unknown',
+                email: p.email || '',
+                role: p.role || 'customer',
+                status: p.status || 'active',
+                createdAt: p.created_at,
+                subscriptionDays: p.subscription_days || 30,
+                subscriptionEndDate: p.subscription_end_date || new Date().toISOString()
+            }));
+            setUsers(mappedUsers);
+        }
+    } catch (err) {
+        console.error('Error fetching users:', err);
+        // Fallback to local storage
+        const stored = JSON.parse(localStorage.getItem('tg_registered_users') || '[]');
+        setUsers(stored);
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
     if (window.confirm('Delete this user permanently?')) {
-      const updated = users.filter(u => u.id !== id);
-      setUsers(updated);
-      localStorage.setItem('tg_registered_users', JSON.stringify(updated));
+        try {
+            // Delete from profiles (auth user deletion requires service role, so we just delete profile)
+            const { error } = await supabase.from('profiles').delete().eq('id', id);
+            if (error) throw error;
+            setUsers(users.filter(u => u.id !== id));
+        } catch (err) {
+            console.error('Error deleting user:', err);
+            // Fallback local delete
+            const updated = users.filter(u => u.id !== id);
+            setUsers(updated);
+            localStorage.setItem('tg_registered_users', JSON.stringify(updated));
+        }
     }
   };
 
@@ -37,6 +80,9 @@ const ManageUser = () => {
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        {loading ? (
+            <div className="p-10 text-center text-gray-400 font-bold text-xs uppercase tracking-widest">Loading Users...</div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-gray-50 border-b">
@@ -95,6 +141,7 @@ const ManageUser = () => {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

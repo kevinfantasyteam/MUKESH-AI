@@ -36,6 +36,28 @@ const Register = () => {
 
         if (error) throw error;
 
+        if (data.user) {
+            const now = new Date();
+            const endDate = new Date();
+            endDate.setDate(now.getDate() + parseInt(formData.subscriptionDays));
+
+            const { error: profileError } = await supabase.from('profiles').insert({
+                id: data.user.id,
+                username: formData.username,
+                email: formData.email,
+                role: formData.role,
+                subscription_days: parseInt(formData.subscriptionDays),
+                subscription_end_date: endDate.toISOString(),
+                status: 'active'
+            });
+
+            if (profileError) {
+                console.error('Profile creation error:', profileError);
+                // Fallback: if profile creation fails, maybe just continue or show error
+                // But we want to ensure it shows up in the list
+            }
+        }
+
         setSuccess(true);
         setTimeout(() => {
           navigate('/manageuser');

@@ -16,6 +16,17 @@ export const getCurrentUser = async () => {
 /*
 create table matches (
   id text primary key,
+  series text,
+  match_type text,
+  status text,
+  match_status_key text,
+  date_time_gmt text,
+  t1 text,
+  t2 text,
+  t1_img text,
+  t2_img text,
+  t1s text,
+  t2s text,
   data jsonb,
   players jsonb,
   created_at timestamptz default now(),
@@ -29,6 +40,18 @@ create table saved_teams (
   settings jsonb,
   created_at timestamptz default now(),
   user_id uuid
+);
+
+create table profiles (
+  id uuid references auth.users not null primary key,
+  username text,
+  email text,
+  role text,
+  subscription_days int,
+  subscription_end_date timestamptz,
+  status text default 'active',
+  dream11_mobile text,
+  created_at timestamptz default now()
 );
 */
 

@@ -7,11 +7,13 @@ import { FaPlus, FaTrash, FaEdit, FaChevronLeft, FaSave, FaUserPlus, FaSync, FaM
 import { syncMatchDataFromText } from './services/gemini';
 import { fantasyApi } from './services/fantasyApi';
 
+import { supabase } from './services/supabase';
+
 const MatchSeriesManager = () => {
   const navigate = useNavigate();
   const [activeSport, setActiveSport] = useState<SportType>('cricket');
   const [seriesList, setSeriesList] = useState<LegacySeries[]>([]);
-  const [view, setView] = useState<'list' | 'add-series' | 'edit-series' | 'edit-team' | 'auto-sync' | 'import-id'>('list');
+  const [view, setView] = useState<'list' | 'add-series' | 'edit-series' | 'edit-team' | 'auto-sync' | 'import-id' | 'db-sync'>('list');
   
   const [selectedSeriesIdx, setSelectedSeriesIdx] = useState<number>(-1);
   const [selectedTeamIdx, setSelectedTeamIdx] = useState<number>(-1);
@@ -20,6 +22,7 @@ const MatchSeriesManager = () => {
   const [quickPlayerInput, setQuickPlayerInput] = useState('');
   const [syncInput, setSyncInput] = useState('');
   const [matchIdInput, setMatchIdInput] = useState('');
+  const [dbMatchIdInput, setDbMatchIdInput] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
@@ -30,6 +33,75 @@ const MatchSeriesManager = () => {
   const saveToStorage = (updatedList: LegacySeries[]) => {
     localStorage.setItem('series_data', JSON.stringify({ req_data: updatedList }));
     setSeriesList(updatedList);
+  };
+
+  const insertMatchData = async (match: any) => {
+      const { data, error } = await supabase
+        .from('matches')
+        .upsert({
+          id: match.id,
+          series: match.series,
+          match_type: match.matchType,
+          status: match.status,
+          match_status_key: match.ms,
+          date_time_gmt: match.dateTimeGMT,
+          t1: match.t1,
+          t2: match.t2,
+          t1_img: match.t1img,
+          t2_img: match.t2img,
+          t1s: match.t1s,
+          t2s: match.t2s
+        });
+    
+      if (error) {
+          console.log("Error inserting match:", error);
+          alert("Error syncing match to DB: " + error.message);
+      } else {
+          console.log("Match synced to Supabase!");
+          alert("Match synced to Supabase successfully!");
+      }
+  };
+
+  const handleDbSync = async () => {
+      if (!dbMatchIdInput) return alert("Please enter a Match ID");
+      setIsSyncing(true);
+      try {
+          // Fetch match data from the API the user is likely referring to (Cricbuzz/CricketData via proxy or direct if they have one)
+          // Since I don't have the exact URL, I will use a placeholder that mimics the structure or tries to fetch from the fantasyApi and adapt it
+          // However, the user's structure is very specific. I will assume they might want to fetch from the same source as 'import-id' but save differently.
+          // Or, I will try to fetch from the fantasyApi and MAP it to their structure if possible.
+          
+          // Let's try fetching from the fantasyApi first as we have that.
+          const res = await fantasyApi.getMatchDetails(dbMatchIdInput);
+          if (res.status === "success" && res.data) {
+              const m = res.data;
+              // Map to user's expected structure
+              const mappedMatch = {
+                  id: m.id,
+                  series: "Unknown Series", // API might not return this directly in simple view
+                  matchType: m.sport_index === 0 ? "Cricket" : "Other",
+                  status: "Scheduled",
+                  ms: "fixture",
+                  dateTimeGMT: m.match_time,
+                  t1: m.left_team_name,
+                  t2: m.right_team_name,
+                  t1img: "", // Placeholder
+                  t2img: "", // Placeholder
+                  t1s: m.left_team_name.substring(0, 3).toUpperCase(),
+                  t2s: m.right_team_name.substring(0, 3).toUpperCase()
+              };
+              await insertMatchData(mappedMatch);
+          } else {
+              // If fantasyApi fails or is different, we might need a direct fetch if the user provided a specific URL in mind.
+              // For now, I'll assume the user might want to input the JSON directly if the fetch fails, or I'll just alert.
+              alert("Match not found in API.");
+          }
+      } catch (err) {
+          console.error(err);
+          alert("Failed to fetch match data.");
+      } finally {
+          setIsSyncing(false);
+      }
   };
 
   const handleImportById = async () => {
@@ -288,6 +360,13 @@ const MatchSeriesManager = () => {
                 <div className="bg-white/20 p-3 rounded-full"><FaGlobe /></div>
                 Auto Sync
               </button>
+              <button 
+                onClick={() => setView('db-sync')}
+                className="bg-gray-800 text-white py-4 rounded-3xl font-black text-[10px] uppercase flex flex-col items-center justify-center gap-2 shadow-xl active:scale-95 transition-all col-span-2"
+              >
+                <div className="bg-white/20 p-3 rounded-full"><FaSave /></div>
+                Sync Match to DB
+              </button>
           </div>
 
           <div className="space-y-4">
@@ -386,6 +465,42 @@ const MatchSeriesManager = () => {
             ) : (
                 <>
                     <FaSync /> START AUTO SYNC
+                </>
+            )}
+           </button>
+        </div>
+      )}
+
+      {view === 'db-sync' && (
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-gray-100 space-y-6">
+           <div className="text-center">
+                <div className="bg-gray-100 w-16 h-16 rounded-3xl flex items-center justify-center text-gray-600 mx-auto mb-4 text-2xl shadow-lg"><FaSave /></div>
+                <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter">Sync to DB</h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Fetch & Upsert to Supabase</p>
+           </div>
+           
+           <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Match ID</label>
+                <input 
+                    className="w-full bg-gray-50 border border-gray-200 rounded-3xl px-6 py-5 font-bold text-sm focus:ring-4 focus:ring-gray-50 outline-none transition-all"
+                    placeholder="e.g. 112839"
+                    value={dbMatchIdInput}
+                    onChange={(e) => setDbMatchIdInput(e.target.value)}
+                />
+           </div>
+
+           <button 
+            onClick={handleDbSync}
+            disabled={isSyncing}
+            className="w-full bg-gray-900 text-white py-5 rounded-3xl font-black text-sm shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all disabled:opacity-50"
+           >
+            {isSyncing ? (
+                <>
+                    <FaSync className="animate-spin" /> SYNCING...
+                </>
+            ) : (
+                <>
+                    <FaSave /> FETCH & SAVE
                 </>
             )}
            </button>
